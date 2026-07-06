@@ -512,6 +512,41 @@ Do not modify visual layout without approval
       border-color: rgba(34,211,238,0.75) !important;
       box-shadow: inset 0 0 10px rgba(34,211,238,0.14), 0 0 8px rgba(34,211,238,0.22) !important;
     }
+
+    /* Lente di ingrandimento testo: mostra in grande l'etichetta del controllo
+       sotto il mouse o con focus da tastiera, per i tasti/manopole troppo
+       piccoli da leggere alla scala reale della console. */
+    .hover-magnifier {
+      position: fixed;
+      z-index: 200;
+      pointer-events: none;
+      background: rgba(8, 10, 14, 0.96);
+      border: 1px solid rgba(34, 211, 238, 0.4);
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-family: 'Courier New', monospace;
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 100ms ease, transform 100ms ease;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+      max-width: 240px;
+    }
+    .hover-magnifier.visible { opacity: 1; transform: translateY(0); }
+    .hover-magnifier-category {
+      display: block;
+      font-size: 8px;
+      letter-spacing: 0.14em;
+      color: #22d3ee;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    .hover-magnifier-text {
+      display: block;
+      font-size: 13px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1.3;
+    }
   </style>
 </head>
 <body class="h-screen flex flex-col hardware-texture text-gray-300">
@@ -538,6 +573,7 @@ Do not modify visual layout without approval
 <button class="tab-btn px-3 py-2 text-[9px] font-bold border-r border-black/40 hover:bg-white/5" onclick="switchTab('MIX_BUS')">MIX BUS</button>
 <button class="tab-btn px-3 py-2 text-[9px] font-bold hover:bg-white/5" onclick="switchTab('SCENES')">SCENES</button>
 <div class="ml-auto flex items-center px-3 gap-3">
+<button class="tab-btn px-2 py-1 text-[8px] font-bold border border-white/10" id="magToggle" type="button" aria-pressed="true">MAG ON</button>
 <span class="text-[9px] font-mono text-vb-cyan" id="clock">12:13:59</span>
 <div class="w-2 h-2 rounded-full bg-led-green shadow-[0_0_5px_rgba(74,222,128,0.5)]"></div>
 </div>
@@ -664,7 +700,7 @@ Do not modify visual layout without approval
 <div class="console-separation-band w-full"></div>
 <!-- CHANNEL AREA (Bottom 55% Height) -->
 <main class="flex-1 min-h-0 w-full flex bg-[#0c0d0f] overflow-x-auto scroll-hide relative z-10 channel-bank">
-<div class="flex h-full pr-48"> <!-- Padding for Master section -->
+<div class="flex h-full">
 <script>
       const colors = ['#22d3ee', '#4ade80', '#fbbf24', '#f87171'];
       const channelNames = ["Lead Vocal", "Vocal R", "Backing 1", "Backing 2", "Kick", "Snare", "Hi-Hat", "Tom 1", "Tom 2", "Overhead L", "Overhead R", "Bass", "Guitar L", "Guitar R", "Keys L", "Keys R"];
@@ -724,7 +760,7 @@ Do not modify visual layout without approval
       }
     </script>
 <!-- Master Section (Sticky Right) -->
-<div class="w-44 h-full bg-[#0d0e11] border-l-[10px] border-black flex flex-col fixed right-[14px] z-30 shadow-[-20px_0_40px_rgba(0,0,0,0.8)]">
+<div class="w-44 h-full bg-[#0d0e11] border-l-[10px] border-black flex flex-col sticky right-0 z-30 shadow-[-20px_0_40px_rgba(0,0,0,0.8)] flex-shrink-0">
 <div class="h-7 bg-black flex items-center justify-center text-[9px] font-black tracking-widest text-gray-500 border-b border-white/5">STEREO MASTER</div>
 <div class="flex-grow flex p-2 gap-2">
 <!-- L and R Faders -->
@@ -747,17 +783,6 @@ Do not modify visual layout without approval
             `);
           });
         </script>
-</div>
-<!-- Monitoring -->
-<div class="h-24 bg-black/95 p-2 flex justify-around items-center border-t border-white/10">
-<div class="flex flex-col items-center gap-1.5">
-<div class="knob w-9 h-9 relative rounded-full"><div class="absolute top-1 left-1/2 -translate-x-1/2 w-0.5 h-2 bg-white"></div></div>
-<span class="label-silver">MONITOR</span>
-</div>
-<div class="flex flex-col items-center gap-1.5">
-<div class="knob w-9 h-9 relative rounded-full"><div class="absolute top-1 left-1/2 -translate-x-1/2 w-0.5 h-2 bg-white"></div></div>
-<span class="label-silver">PHONES</span>
-</div>
 </div>
 </div>
 </div>
@@ -845,6 +870,20 @@ Do not modify visual layout without approval
 
   function dbToFaderTop(db) {
     return clamp(((10 - db) / 70) * 100, 0, 100);
+  }
+
+  // Il cursore ha un'altezza fissa (48px canali, 80px master): posizionarlo con
+  // top:100% lo fa sporgere oltre il fondo del binario. Qui il valore logico
+  // 0-100 viene convertito nello spazio di corsa reale (binario - altezza cursore),
+  // così il cursore resta sempre dentro il binario, ai due estremi compresi.
+  function renderFaderTop(cap, logicalTop) {
+    if (!cap) return;
+    const track = cap.parentElement;
+    const trackHeight = track ? track.offsetHeight : 0;
+    const capHeight = cap.offsetHeight;
+    const insetPercent = trackHeight > 0 ? (capHeight / trackHeight) * 100 : 0;
+    const safeTop = (clamp(logicalTop, 0, 100) / 100) * (100 - insetPercent);
+    cap.style.top = `${safeTop}%`;
   }
 
   function nowStamp() {
@@ -1197,7 +1236,7 @@ Do not modify visual layout without approval
       el.innerHTML = `
         ${kicker}
         <div style="padding:8px 26px 26px;">
-          <h2 style="margin:0 0 14px;font-size:24px;color:#143264;">Practical Test</h2>
+          <h2 style="margin:0 0 14px;font-size:24px;color:#bea064;font-weight:850;">Practical Test</h2>
           <p style="margin:0 0 12px;font-size:14px;color:#172033;line-height:1.5;">Your details were already collected in the written form. This screen is for console operation only.</p>
           <p style="margin:0 0 12px;font-size:14px;color:#172033;line-height:1.5;">You will complete ${practicalAssessmentTasks.length} short hands-on tasks on this console, each with its own time limit. Read the task shown here, then operate the controls to complete it.</p>
           <div style="border-left:4px solid #bea064;background:#fbfcff;border:1px solid #d9dee8;border-left-width:4px;padding:12px 14px;border-radius:0 8px 8px 0;margin:0 0 14px;font-size:13.5px;color:#172033;line-height:1.5;">
@@ -1261,10 +1300,10 @@ Do not modify visual layout without approval
       <div style="padding:8px 26px 26px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
           <div style="font-size:12px;color:#667085;text-transform:uppercase;letter-spacing:.08em;font-weight:750;">Task ${session.taskIndex + 1}/${practicalAssessmentTasks.length}</div>
-          <div style="font-size:26px;font-weight:850;color:${session.timeRemaining <= 10 ? '#b42318' : '#143264'};">${session.timeRemaining}s</div>
+          <div style="font-size:22px;font-weight:850;color:#fff;background:${session.timeRemaining <= 10 ? '#b42318' : '#bea064'};padding:4px 14px;border-radius:20px;">${session.timeRemaining}s</div>
         </div>
         <div style="background:#fff;border:1px solid #d9dee8;border-left:5px solid #bea064;border-radius:0 8px 8px 0;box-shadow:0 4px 16px rgba(16,24,40,.06);padding:16px;margin-bottom:16px;">
-          <div style="font-size:19px;font-weight:850;color:#143264;line-height:1.3;">${task?.title || 'Preparing next task...'}</div>
+          <div style="font-size:21px;font-weight:850;color:#bea064;line-height:1.3;">${task?.title || 'Preparing next task...'}</div>
           <div style="font-size:15px;color:#172033;line-height:1.5;margin-top:8px;">${task?.instruction || ''}</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;text-align:center;margin-bottom:16px;">
@@ -1384,10 +1423,8 @@ Do not modify visual layout without approval
     };
   }
 
-  // Incolla qui l'URL "/exec" ottenuto pubblicando il Google Apps Script come
-  // Web App (vedi doPost lato script). Finché è vuoto, il tasto "Submit
-  // Application" segna comunque il test come inviato in locale, senza errori,
-  // per non bloccare la demo prima che il backend esista davvero.
+  // URL del Google Apps Script pubblicato come Web App (vedi doPost lato script
+  // in google-apps-script-backend.gs): salva su Google Sheet e manda la mail.
   const SUBMISSION_ENDPOINT = 'https://script.google.com/macros/s/AKfycbzmedZVsI_6_sj91QcPBW0_Nwb_sJO5mfczVO0_7gdDXuC-TYmUvR1-KHFr9kPt25L-/exec';
 
   function submitTestResults() {
@@ -1832,7 +1869,7 @@ Do not modify visual layout without approval
     const state = currentFaderState(channelId);
     const cap = document.querySelector(`[data-action="channel-fader"][data-channel-id="${channelId}"]`);
     const readout = document.querySelector(`[data-fader-value="${channelId}"]`);
-    if (cap) cap.style.top = `${state.faderTop}%`;
+    renderFaderTop(cap, state.faderTop);
     if (readout) readout.textContent = Number.isFinite(state.faderDb) ? state.faderDb.toFixed(1) : '-∞';
     const onButton = document.querySelector(`[data-action="toggle-on"][data-channel-id="${channelId}"]`);
     if (onButton) {
@@ -1852,7 +1889,7 @@ Do not modify visual layout without approval
     const cap = document.querySelector(`[data-action="master-fader"][data-master-id="${masterId}"]`);
     const readout = document.querySelector(`[data-master-value="${masterId}"]`);
     const button = document.querySelector(`[data-action="master-on"][data-master-id="${masterId}"]`);
-    if (cap) cap.style.top = `${master.faderTop}%`;
+    renderFaderTop(cap, master.faderTop);
     if (readout) readout.textContent = master.faderDb.toFixed(1);
     if (button) {
       button.classList.toggle('opacity-35', !master.on);
@@ -2117,12 +2154,13 @@ Do not modify visual layout without approval
     cap.addEventListener('mousedown', function(e) {
       const channelId = Number(this.dataset.channelId);
       const startY = e.clientY;
-      const startTop = parseFloat(this.style.top) || 0;
+      const startTop = (assessmentState.sendsOnFaderActive && assessmentState.selectedMixBus)
+        ? channelSend(channelId).faderTop
+        : assessmentState.channels[channelId].faderTop;
       const track = this.parentElement;
       const onMove = (moveEvent) => {
         const delta = ((moveEvent.clientY - startY) / track.offsetHeight) * 100;
         const top = clamp(startTop + delta, 0, 100);
-        this.style.top = `${top}%`;
         if (assessmentState.sendsOnFaderActive && assessmentState.selectedMixBus) {
           const send = channelSend(channelId);
           send.faderTop = top;
@@ -2153,12 +2191,11 @@ Do not modify visual layout without approval
     cap.addEventListener('mousedown', function(e) {
       const masterId = this.dataset.masterId;
       const startY = e.clientY;
-      const startTop = parseFloat(this.style.top) || assessmentState.master[masterId].faderTop;
+      const startTop = assessmentState.master[masterId].faderTop;
       const track = this.parentElement;
       const onMove = (moveEvent) => {
         const delta = ((moveEvent.clientY - startY) / track.offsetHeight) * 100;
         const top = clamp(startTop + delta, 0, 100);
-        this.style.top = `${top}%`;
         assessmentState.master[masterId].faderTop = top;
         assessmentState.master[masterId].faderDb = faderTopToDb(top);
         updateMasterReadout(masterId);
@@ -2170,6 +2207,43 @@ Do not modify visual layout without approval
       };
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
+    });
+  });
+
+  // Click-to-jump sul binario: clicca un punto del percorso (non il cursore
+  // stesso, quello resta trascinabile come prima) e il fader si sposta subito
+  // lì, senza dover trascinare tutto il tragitto a mano.
+  document.querySelectorAll('.fader-slot').forEach(track => {
+    const cap = track.querySelector('[data-action="channel-fader"], [data-action="master-fader"]');
+    if (!cap) return;
+    track.addEventListener('click', event => {
+      if (event.target !== track) return;
+      const rect = track.getBoundingClientRect();
+      const insetPercent = rect.height > 0 ? (cap.offsetHeight / rect.height) * 100 : 0;
+      const usablePercent = Math.max(1, 100 - insetPercent);
+      const clickPercent = ((event.clientY - rect.top) / rect.height) * 100;
+      const logicalTop = clamp((clickPercent / usablePercent) * 100, 0, 100);
+      if (cap.dataset.action === 'channel-fader') {
+        const channelId = Number(cap.dataset.channelId);
+        if (assessmentState.sendsOnFaderActive && assessmentState.selectedMixBus) {
+          const send = channelSend(channelId);
+          send.faderTop = logicalTop;
+          send.levelDb = faderTopToDb(logicalTop);
+          recordAction('sendFaderMove', { channelId, busId: assessmentState.selectedMixBus, levelDb: send.levelDb });
+        } else {
+          assessmentState.channels[channelId].faderTop = logicalTop;
+          assessmentState.channels[channelId].faderDb = faderTopToDb(logicalTop);
+          recordAction('faderMove', { channelId, faderDb: assessmentState.channels[channelId].faderDb });
+        }
+        updateFaderReadout(channelId);
+        if (assessmentState.selectedChannel === channelId && assessmentState.activeTab === 'SELECTED_CH') switchTab('SELECTED_CH');
+      } else {
+        const masterId = cap.dataset.masterId;
+        assessmentState.master[masterId].faderTop = logicalTop;
+        assessmentState.master[masterId].faderDb = faderTopToDb(logicalTop);
+        recordAction('masterFaderMove', { masterId, faderDb: assessmentState.master[masterId].faderDb });
+        updateMasterReadout(masterId);
+      }
     });
   });
 
@@ -2239,6 +2313,127 @@ Do not modify visual layout without approval
     });
   });
 
+  // Lente di ingrandimento testo (adattata dal simulatore grandMA3): mostra in
+  // grande l'etichetta del controllo sotto il mouse o con focus da tastiera.
+  // Il testo è derivato dinamicamente (canale selezionato + funzione del
+  // controllo) invece di annotare a mano ogni singolo tasto/manopola.
+  const magnifierState = { enabled: true, target: null };
+
+  const magnifierSelector = [
+    '[data-action="select-channel"]', '[data-action="cue-channel"]', '[data-action="toggle-on"]',
+    '[data-action="master-on"]', '.knob[data-knob]', '[data-eq-band]', '[data-eq-control]',
+    '[data-action="user-defined-key"]', '[data-action="select-mix-bus"]', '[data-scene-id]',
+    '[data-action="toggle-hpf"]', '[data-action="toggle-gate"]', '[data-action="toggle-compressor"]',
+    '[data-route-bus]', '[data-action="cycle-input-patch"]', '[data-action="cycle-output-patch"]',
+    '.touch-turn-wheel'
+  ].join(',');
+
+  function getMagnifierTarget(origin) {
+    if (!(origin instanceof Element)) return null;
+    const target = origin.closest(magnifierSelector);
+    return target?.closest('#hoverMagnifier') ? null : target;
+  }
+
+  function getMagnifierText(target) {
+    const channelId = target.dataset.channelId ? Number(target.dataset.channelId) : null;
+    const channelName = channelId ? (assessmentState.channels[channelId]?.name || `CH${channelId}`) : null;
+    if (target.matches('[data-action="select-channel"]')) return `Channel ${channelId} - ${channelName} - SEL (select for Selected Channel section)`;
+    if (target.matches('[data-action="cue-channel"]')) return `Channel ${channelId} - ${channelName} - CUE (solo/PFL)`;
+    if (target.matches('[data-action="toggle-on"]')) return `Channel ${channelId} - ${channelName} - ON/OFF`;
+    if (target.matches('[data-action="master-on"]')) return `Master ${target.dataset.masterId} - ON/OFF`;
+    if (target.matches('.knob[data-knob]')) {
+      const labels = { gain: 'Gain', pan: 'Pan', hpfFrequency: 'HPF Frequency', gateThreshold: 'Dynamics 1 (Gate) Threshold', compressorThreshold: 'Dynamics 2 (Compressor) Threshold', ratio: 'Compressor Ratio' };
+      const selected = selectedChannel();
+      return `Selected Channel (${selected.name}) - ${labels[target.dataset.knob] || target.dataset.knob}`;
+    }
+    if (target.matches('[data-eq-band]')) return `EQ Band Select - ${target.dataset.eqBand}`;
+    if (target.matches('[data-eq-control]')) return `EQ Encoder - ${target.dataset.eqControl.toUpperCase()} (acts on the selected band)`;
+    if (target.matches('[data-action="user-defined-key"]')) return `User Defined Key ${target.dataset.keyId} (not assigned in this assessment)`;
+    if (target.matches('[data-action="select-mix-bus"]')) return `Select MIX ${target.dataset.mixBus} as Sends on Fader destination`;
+    if (target.matches('[data-scene-id]')) return `Scene ${target.dataset.sceneId}`;
+    if (target.matches('[data-action="toggle-hpf"]')) return 'Toggle HPF (High Pass Filter) on selected channel';
+    if (target.matches('[data-action="toggle-gate"]')) return 'Toggle Dynamics 1 (Gate) on selected channel';
+    if (target.matches('[data-action="toggle-compressor"]')) return 'Toggle Dynamics 2 (Compressor) on selected channel';
+    if (target.matches('[data-route-bus]')) return `Quick send assign - MIX ${target.dataset.routeBus}`;
+    if (target.matches('[data-action="cycle-input-patch"]')) return `Input Patch - Channel ${target.dataset.channelId} (click to cycle source)`;
+    if (target.matches('[data-action="cycle-output-patch"]')) return `Output Patch - MIX ${target.dataset.busId} (click to cycle destination)`;
+    if (target.matches('.touch-turn-wheel')) return 'Touch and Turn - edits the currently focused parameter';
+    return target.getAttribute('aria-label') || target.textContent?.trim() || '';
+  }
+
+  function getMagnifierCategory(target) {
+    if (target.matches('.knob, .touch-turn-wheel')) return 'ENCODER';
+    if (target.matches('[data-scene-id]')) return 'SCENE';
+    if (target.matches('[data-action="user-defined-key"]')) return 'UDK';
+    return 'KEY';
+  }
+
+  function positionMagnifier(clientX, clientY) {
+    const magnifier = document.getElementById('hoverMagnifier');
+    const offset = 16;
+    const margin = 8;
+    const bounds = magnifier.getBoundingClientRect();
+    let left = clientX + offset;
+    let top = clientY + offset;
+    if (left + bounds.width > window.innerWidth - margin) left = clientX - bounds.width - offset;
+    if (top + bounds.height > window.innerHeight - margin) top = clientY - bounds.height - offset;
+    magnifier.style.left = `${Math.max(margin, left)}px`;
+    magnifier.style.top = `${Math.max(margin, top)}px`;
+  }
+
+  function showMagnifier(target, clientX, clientY) {
+    if (!magnifierState.enabled) return;
+    const text = getMagnifierText(target);
+    if (!text) return hideMagnifier();
+    magnifierState.target = target;
+    document.getElementById('hoverMagnifierCategory').textContent = getMagnifierCategory(target);
+    document.getElementById('hoverMagnifierText').textContent = text;
+    const magnifier = document.getElementById('hoverMagnifier');
+    magnifier.classList.add('visible');
+    magnifier.setAttribute('aria-hidden', 'false');
+    if (clientX == null) {
+      const rect = target.getBoundingClientRect();
+      positionMagnifier(rect.right, rect.top);
+    } else positionMagnifier(clientX, clientY);
+  }
+
+  function hideMagnifier() {
+    magnifierState.target = null;
+    const magnifier = document.getElementById('hoverMagnifier');
+    magnifier.classList.remove('visible');
+    magnifier.setAttribute('aria-hidden', 'true');
+  }
+
+  function initializeMagnifier() {
+    const toggle = document.getElementById('magToggle');
+    toggle.addEventListener('click', () => {
+      magnifierState.enabled = !magnifierState.enabled;
+      toggle.textContent = magnifierState.enabled ? 'MAG ON' : 'MAG OFF';
+      toggle.setAttribute('aria-pressed', String(magnifierState.enabled));
+      if (!magnifierState.enabled) hideMagnifier();
+    });
+    document.addEventListener('mouseover', event => {
+      const target = getMagnifierTarget(event.target);
+      if (target) showMagnifier(target, event.clientX, event.clientY);
+    });
+    document.addEventListener('mousemove', event => {
+      if (!magnifierState.enabled || !magnifierState.target) return;
+      const target = getMagnifierTarget(event.target);
+      if (target === magnifierState.target) positionMagnifier(event.clientX, event.clientY);
+    });
+    document.addEventListener('mouseout', event => {
+      if (!magnifierState.target) return;
+      if (!event.relatedTarget || !magnifierState.target.contains(event.relatedTarget)) hideMagnifier();
+    });
+    document.addEventListener('focusin', event => {
+      const target = getMagnifierTarget(event.target);
+      if (target) showMagnifier(target, null, null);
+    });
+    document.addEventListener('focusout', event => {
+      if (event.target === magnifierState.target) hideMagnifier();
+    });
+  }
+
   initState();
   Object.keys(assessmentState.channels).forEach(channelId => updateFaderReadout(Number(channelId)));
   Object.keys(assessmentState.master).forEach(masterId => updateMasterReadout(masterId));
@@ -2246,5 +2441,10 @@ Do not modify visual layout without approval
   refreshHardwareSelection();
   renderControlPanel();
   switchTab('SELECTED_CH');
+  initializeMagnifier();
 </script>
+<div class="hover-magnifier" id="hoverMagnifier" role="tooltip" aria-hidden="true">
+  <span class="hover-magnifier-category" id="hoverMagnifierCategory">CONTROL</span>
+  <strong class="hover-magnifier-text" id="hoverMagnifierText"></strong>
+</div>
 </body></html>
