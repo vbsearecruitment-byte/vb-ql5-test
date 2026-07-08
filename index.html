@@ -500,8 +500,28 @@ Do not modify visual layout without approval
       box-shadow:
         inset 0 8px 12px rgba(255,255,255,0.035),
         inset 0 -12px 18px rgba(0,0,0,0.82);
-      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      overflow: hidden;
     }
+    /* Barra di lettura parametro: mostra in grande l'ultimo parametro toccato
+       e il suo valore corrente, così il candidato vede sempre cosa sta regolando
+       (gain, HPF, EQ, send level...). È il feedback che sul QL5 reale dà lo schermo. */
+    #paramReadout {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      font-family: 'Courier New', monospace;
+      opacity: 0.35;
+      transition: opacity 140ms ease;
+    }
+    #paramReadout.active { opacity: 1; }
+    #paramReadoutContext { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: #6b7280; }
+    #paramReadoutLabel { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #94a3b8; font-weight: 700; }
+    #paramReadoutValue { font-size: 20px; font-weight: 900; color: #22d3ee; line-height: 1; letter-spacing: 0.02em; }
+    #paramReadoutValue.warn { color: #fbbf24; }
 
     .focus-target {
       cursor: pointer;
@@ -697,7 +717,13 @@ Do not modify visual layout without approval
 </div>
 </div>
 </header>
-<div class="console-separation-band w-full"></div>
+<div class="console-separation-band w-full">
+<div id="paramReadout">
+<span id="paramReadoutContext"></span>
+<span id="paramReadoutLabel"></span>
+<span id="paramReadoutValue"></span>
+</div>
+</div>
 <!-- CHANNEL AREA (Bottom 55% Height) -->
 <main class="flex-1 min-h-0 w-full flex bg-[#0c0d0f] overflow-x-auto scroll-hide relative z-10 channel-bank">
 <div class="flex h-full">
@@ -803,8 +829,8 @@ Do not modify visual layout without approval
       instruction: 'Select channel 1 (Lead Vocal) and set the input GAIN to +6 dB using the Selected Channel section.' },
     { id: 'hpfLeadVocal100Hz', title: 'Set HPF to 100 Hz on Lead Vocal', type: 'hpfFrequency', channelId: 1, targetHz: 100, toleranceHz: 5, timeLimit: 90,
       instruction: 'On channel 1 (Lead Vocal), enable the HPF and set its frequency to 100 Hz.' },
-    { id: 'cutGuitarLowMid', title: 'Cut Low-Mid EQ on Guitar L', type: 'eqBand', channelId: 13, band: 'lowMid', gain: -3, toleranceDb: 1, timeLimit: 120,
-      instruction: 'Select channel 13 (Guitar L), choose the LOW-MID band on the Equalizer, and cut its gain to -3 dB.' },
+    { id: 'cutGuitarLowMid', title: 'Cut 3 dB at 350 Hz (Low-Mid) on Guitar L', type: 'eqBand', channelId: 13, band: 'lowMid', gain: -3, toleranceDb: 1, timeLimit: 120,
+      instruction: 'On channel 13 (Guitar L), select the LOW-MID EQ band (350 Hz) and cut it by 3 dB (set its gain to -3 dB). Watch the value on the readout bar under the screen.' },
     { id: 'muteSpareKeys', title: 'Mute the Spare Keys Channel', type: 'muteChannel', channelId: 16, timeLimit: 60,
       instruction: 'Mute channel 16 (Keys R) - it is not needed for this cue.' },
     { id: 'cueLeadVocal', title: 'Cue (Solo) the Lead Vocal', type: 'cueChannel', channelId: 1, timeLimit: 60,
@@ -893,7 +919,7 @@ Do not modify visual layout without approval
   function defaultEq() {
     return {
       low: { frequency: 100, gain: 0, q: 0.7 },
-      lowMid: { frequency: 400, gain: 0, q: 1 },
+      lowMid: { frequency: 350, gain: 0, q: 1 },
       highMid: { frequency: 2500, gain: 0, q: 1 },
       high: { frequency: 10000, gain: 0, q: 0.7 }
     };
@@ -1639,10 +1665,67 @@ Do not modify visual layout without approval
     const channel = assessmentState.channels[target.channelId] || selectedChannel();
     if (target.area === 'eq' && target.band && channel.eq[target.band]) {
       const value = applyEqParameterDelta(target.parameter, target.band, channel, delta);
+      showParameterReadout({ area: 'eq', parameter: target.parameter, band: target.band, channelId: channel.id });
       return { target, value };
     }
     const value = applyParameterDelta(target.parameter, channel, delta);
+    showParameterReadout({ area: 'channel', parameter: target.parameter, channelId: channel.id });
     return { target, value };
+  }
+
+  // --- Barra di lettura parametro (feedback valore sempre visibile) ---
+  const BAND_LABELS = { low: 'LOW', lowMid: 'LOW-MID', highMid: 'HIGH-MID', high: 'HIGH' };
+
+  function paramReadoutData(entry) {
+    const channel = assessmentState.channels[entry.channelId] || selectedChannel();
+    const context = `CH ${String(channel.id).padStart(2, '0')} ${channel.name}`;
+    if (entry.area === 'eq') {
+      const band = channel.eq[entry.band];
+      const bandName = BAND_LABELS[entry.band] || entry.band;
+      if (entry.parameter === 'gain') return { context, label: `EQ ${bandName} GAIN`, value: `${band.gain > 0 ? '+' : ''}${band.gain.toFixed(1)} dB`, warn: band.gain !== 0 };
+      if (entry.parameter === 'frequency') return { context, label: `EQ ${bandName} FREQ`, value: `${band.frequency} Hz` };
+      if (entry.parameter === 'q') return { context, label: `EQ ${bandName} Q`, value: band.q.toFixed(1) };
+    }
+    if (entry.parameter === 'gain') return { context, label: 'HA / GAIN', value: `${channel.gain > 0 ? '+' : ''}${channel.gain} dB` };
+    if (entry.parameter === 'hpfFrequency') return { context, label: 'HPF FREQUENCY', value: channel.hpfEnabled ? `${channel.hpfFrequency} Hz` : `${channel.hpfFrequency} Hz (HPF OFF)`, warn: !channel.hpfEnabled };
+    if (entry.parameter === 'pan') return { context, label: 'PAN', value: channel.pan === 0 ? 'CENTER' : (channel.pan < 0 ? `L ${Math.abs(channel.pan)}` : `R ${channel.pan}`) };
+    if (entry.parameter === 'gateThreshold') return { context, label: 'DYN 1 GATE THR', value: `${channel.gateThreshold} dB` };
+    if (entry.parameter === 'compressorThreshold') return { context, label: 'DYN 2 COMP THR', value: `${channel.compressorThreshold} dB` };
+    if (entry.parameter === 'ratio') return { context, label: 'DYN 2 RATIO', value: `${channel.ratio.toFixed(1)} : 1` };
+    return null;
+  }
+
+  function showParameterReadout(entry) {
+    const data = entry && entry.custom ? entry : paramReadoutData(entry);
+    if (!data) return;
+    const bar = document.getElementById('paramReadout');
+    if (!bar) return;
+    document.getElementById('paramReadoutContext').textContent = data.context || '';
+    document.getElementById('paramReadoutLabel').textContent = data.label || '';
+    const valueEl = document.getElementById('paramReadoutValue');
+    valueEl.textContent = data.value || '';
+    valueEl.classList.toggle('warn', Boolean(data.warn));
+    bar.classList.add('active');
+  }
+
+  function formatDb(db) {
+    if (!Number.isFinite(db)) return '-∞ dB';
+    return `${db > 0 ? '+' : ''}${db.toFixed(1)} dB`;
+  }
+
+  function showChannelFaderReadout(channelId) {
+    const channel = assessmentState.channels[channelId];
+    const context = `CH ${String(channelId).padStart(2, '0')} ${channel.name}`;
+    if (assessmentState.sendsOnFaderActive && assessmentState.selectedMixBus) {
+      const send = channelSend(channelId);
+      showParameterReadout({ custom: true, context, label: `SEND TO MIX ${assessmentState.selectedMixBus}`, value: formatDb(send.levelDb), warn: true });
+    } else {
+      showParameterReadout({ custom: true, context, label: 'CHANNEL FADER', value: formatDb(channel.faderDb) });
+    }
+  }
+
+  function showMasterFaderReadout(masterId) {
+    showParameterReadout({ custom: true, context: `STEREO MASTER ${masterId}`, label: 'MASTER FADER', value: formatDb(assessmentState.master[masterId].faderDb) });
   }
 
   function taskProcessLabel(result) {
@@ -1684,10 +1767,10 @@ Do not modify visual layout without approval
             </div>
             <div class="console-field flex-grow min-h-[70px] relative overflow-hidden">
               <div class="absolute inset-0 opacity-35" style="background-image: linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.12) 1px, transparent 1px); background-size: 22px 18px;"></div>
-              <svg class="relative z-10 w-full h-full" viewBox="0 0 300 150" preserveAspectRatio="none">
+              <svg id="eqCurveSvg" class="relative z-10 w-full h-full" viewBox="0 0 300 150" preserveAspectRatio="none">
                 <path d="M0 75 H300" stroke="rgba(148,163,184,0.28)" stroke-width="1"></path>
-                <path d="${eqPath(ch)}" fill="none" stroke="#22d3ee" stroke-width="2.2"></path>
-                ${Object.values(ch.eq).map((band, index) => `<circle cx="${35 + index * 75}" cy="${clamp(75 - band.gain * 4, 18, 132)}" r="4" fill="#22d3ee" stroke="#061018" stroke-width="2"></circle>`).join('')}
+                <path class="eq-curve-path" d="${eqPath(ch)}" fill="none" stroke="#22d3ee" stroke-width="2.2"></path>
+                ${Object.values(ch.eq).map((band, index) => `<circle class="eq-curve-node" cx="${35 + index * 75}" cy="${clamp(75 - band.gain * 4, 18, 132)}" r="4" fill="#22d3ee" stroke="#061018" stroke-width="2"></circle>`).join('')}
               </svg>
             </div>
             <div class="grid grid-cols-4 gap-1 mt-1 text-[7px]">
@@ -1901,22 +1984,47 @@ Do not modify visual layout without approval
     }
   }
 
-  function updateChannelField(field, value) {
+  // Sincronizza gli input "gemelli" (slider + campo numerico) di uno stesso
+  // parametro, senza toccare quello che l'utente sta usando in quel momento:
+  // così si può digitare o trascinare un valore preciso senza che il pannello
+  // si rigeneri e rubi il focus a metà (era la causa di D1 e D2).
+  function syncPairedInputs(selector, newValue, activeEl) {
+    document.querySelectorAll(selector).forEach(input => {
+      if (input !== activeEl && String(input.value) !== String(newValue)) input.value = newValue;
+    });
+  }
+
+  function updateChannelField(field, value, activeEl) {
     const channel = selectedChannel();
     const handler = parameterHandlers[field];
     if (handler) handler.write(channel, handler.clamp(Number(value)));
     else channel[field] = Number(value);
+    syncPairedInputs(`[data-channel-field="${field}"]`, channel[field], activeEl);
+    showParameterReadout({ area: 'channel', parameter: field, channelId: channel.id });
     recordAction('processingChange', { channelId: channel.id, field, value: channel[field] });
-    refreshScreen();
   }
 
-  function updateEqField(path, value) {
+  function updateEqField(path, value, activeEl) {
     const channel = selectedChannel();
     const [band, field] = path.split('.');
     const handler = eqParameterHandlers[field];
     channel.eq[band][field] = handler ? handler.clamp(Number(value)) : Number(value);
+    syncPairedInputs(`[data-eq-field="${band}.${field}"]`, channel.eq[band][field], activeEl);
+    updateEqCurve(channel);
+    showParameterReadout({ area: 'eq', parameter: field, band, channelId: channel.id });
     recordAction('eqChange', { channelId: channel.id, band, field, value: channel.eq[band][field] });
-    refreshScreen();
+  }
+
+  // Aggiorna la curva EQ a schermo senza rigenerare l'intero pannello.
+  function updateEqCurve(channel) {
+    const svg = document.getElementById('eqCurveSvg');
+    if (!svg) return;
+    const path = svg.querySelector('.eq-curve-path');
+    if (path) path.setAttribute('d', eqPath(channel));
+    svg.querySelectorAll('.eq-curve-node').forEach((node, index) => {
+      const band = Object.values(channel.eq)[index];
+      if (band) node.setAttribute('cy', clamp(75 - band.gain * 4, 18, 132));
+    });
   }
 
   function toggleRoute(busId) {
@@ -2035,10 +2143,12 @@ Do not modify visual layout without approval
       button.addEventListener('click', () => selectChannel(button.dataset.channelId));
     });
     document.querySelectorAll('[data-channel-field]').forEach(input => {
-      input.addEventListener('input', () => updateChannelField(input.dataset.channelField, input.value));
+      input.addEventListener('input', () => updateChannelField(input.dataset.channelField, input.value, input));
+      input.addEventListener('change', () => refreshScreen());
     });
     document.querySelectorAll('[data-eq-field]').forEach(input => {
-      input.addEventListener('input', () => updateEqField(input.dataset.eqField, input.value));
+      input.addEventListener('input', () => updateEqField(input.dataset.eqField, input.value, input));
+      input.addEventListener('change', () => refreshScreen());
     });
     document.querySelectorAll('[data-route-bus]').forEach(button => {
       button.addEventListener('click', () => toggleRoute(Number(button.dataset.routeBus)));
@@ -2170,6 +2280,7 @@ Do not modify visual layout without approval
           assessmentState.channels[channelId].faderDb = faderTopToDb(top);
         }
         updateFaderReadout(channelId);
+        showChannelFaderReadout(channelId);
         if (assessmentState.selectedChannel === channelId && assessmentState.activeTab === 'SELECTED_CH') switchTab('SELECTED_CH');
       };
       const onUp = () => {
@@ -2199,6 +2310,7 @@ Do not modify visual layout without approval
         assessmentState.master[masterId].faderTop = top;
         assessmentState.master[masterId].faderDb = faderTopToDb(top);
         updateMasterReadout(masterId);
+        showMasterFaderReadout(masterId);
       };
       const onUp = () => {
         recordAction('masterFaderMove', { masterId, faderDb: assessmentState.master[masterId].faderDb });
@@ -2236,6 +2348,7 @@ Do not modify visual layout without approval
           recordAction('faderMove', { channelId, faderDb: assessmentState.channels[channelId].faderDb });
         }
         updateFaderReadout(channelId);
+        showChannelFaderReadout(channelId);
         if (assessmentState.selectedChannel === channelId && assessmentState.activeTab === 'SELECTED_CH') switchTab('SELECTED_CH');
       } else {
         const masterId = cap.dataset.masterId;
@@ -2243,6 +2356,7 @@ Do not modify visual layout without approval
         assessmentState.master[masterId].faderDb = faderTopToDb(logicalTop);
         recordAction('masterFaderMove', { masterId, faderDb: assessmentState.master[masterId].faderDb });
         updateMasterReadout(masterId);
+        showMasterFaderReadout(masterId);
       }
     });
   });
@@ -2294,8 +2408,10 @@ Do not modify visual layout without approval
         this.setAttribute('data-rot', newRot);
         if ((eqBandKnob || eqControlKnob) && startEqBand) {
           applyEqParameterDelta(startEqParam, startEqBand, selected, delta, startEqValue);
+          showParameterReadout({ area: 'eq', parameter: startEqParam, band: startEqBand, channelId: selected.id });
         } else {
           applyParameterDelta(knobType, selected, delta, startValue);
+          showParameterReadout({ area: 'channel', parameter: knobType, channelId: selected.id });
         }
         if (assessmentState.activeTab === 'SELECTED_CH') switchTab('SELECTED_CH');
       };
