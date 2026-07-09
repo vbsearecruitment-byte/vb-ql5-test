@@ -831,12 +831,12 @@ Do not modify visual layout without approval
       instruction: 'On channel 1 (Lead Vocal), enable the HPF and set its frequency to 100 Hz.' },
     { id: 'cutGuitarLowMid', title: 'Cut 3 dB at 350 Hz (Low-Mid) on Guitar L', type: 'eqBand', channelId: 13, band: 'lowMid', gain: -3, toleranceDb: 1, timeLimit: 120,
       instruction: 'On channel 13 (Guitar L), select the LOW-MID EQ band (350 Hz) and cut it by 3 dB (set its gain to -3 dB). Watch the value on the readout bar under the screen.' },
-    { id: 'muteSpareKeys', title: 'Mute the Spare Keys Channel', type: 'muteChannel', channelId: 16, timeLimit: 60,
-      instruction: 'Mute channel 16 (Keys R) - it is not needed for this cue.' },
+    { id: 'muteSpareKeys', title: 'Mute channel 16 (Keys R)', type: 'muteChannel', channelId: 16, timeLimit: 60,
+      instruction: 'Press the ON key of channel 16 (Keys R) to mute it - it is not needed for this cue.' },
     { id: 'cueLeadVocal', title: 'Cue (Solo) the Lead Vocal', type: 'cueChannel', channelId: 1, timeLimit: 60,
       instruction: 'Activate CUE on channel 1 (Lead Vocal) to listen to it in solo (PFL).' },
-    { id: 'sendVocalMonitorLevel', title: 'Send Lead Vocal to Monitor at -10 dB', type: 'sendLevel', channelId: 1, busId: 1, targetDb: -10, toleranceDb: 1, timeLimit: 180,
-      instruction: 'Select MIX 1 as the monitor destination, enter SENDS ON FADER mode, and set channel 1 send level to -10 dB.' },
+    { id: 'sendVocalMonitorLevel', title: 'Send Lead Vocal to MIX 1 (monitor) at -10 dB', type: 'sendLevel', channelId: 1, busId: 1, targetDb: -10, toleranceDb: 1, timeLimit: 180,
+      instruction: 'Open the MIX BUS tab, tap MIX 1 to enter SENDS ON FADER, then raise channel 1 fader to -10 dB and switch its ON key on.' },
     { id: 'storeVocalFocusScene', title: 'Store Scene 003 (Vocal Focus)', type: 'sceneStore', sceneId: 3, timeLimit: 90,
       instruction: 'Select Scene 003 (Vocal Focus) and press STORE to save the current console state.' },
     { id: 'recallInitScene', title: 'Recall Scene 001 (Init)', type: 'sceneRecall', sceneId: 1, timeLimit: 75,
@@ -1733,78 +1733,134 @@ Do not modify visual layout without approval
     return result.clean ? 'CLEAN' : `${result.retryCount} RETRY`;
   }
 
+  // Metadati banda EQ (colori Yamaha: LOW rosso, LO-MID ambra, HI-MID verde, HIGH blu)
+  const EQ_BANDS = {
+    low:     { label: 'LOW',    color: '#e0564f' },
+    lowMid:  { label: 'LO-MID', color: '#e0a23a' },
+    highMid: { label: 'HI-MID', color: '#57c66a' },
+    high:    { label: 'HIGH',   color: '#4a8fe0' }
+  };
+
   function renderSelectedChannel() {
     const ch = selectedChannel();
     const dyn1 = ch.dyn1 || { enabled: ch.gateEnabled, threshold: ch.gateThreshold };
     const dyn2 = ch.dyn2 || { enabled: ch.compressorEnabled, threshold: ch.compressorThreshold, ratio: ch.ratio };
     const gateLevel = clamp(Math.abs(dyn1.threshold), 0, 80);
     const compLevel = clamp(Math.abs(dyn2.threshold), 0, 60);
+    const bandKeys = ['low', 'lowMid', 'highMid', 'high'];
+    const activeBand = (assessmentState.focus.area === 'eq' && assessmentState.focus.band) ? assessmentState.focus.band : 'lowMid';
+    const ab = ch.eq[activeBand];
+    const abColor = EQ_BANDS[activeBand].color;
     return `
-      <div class="h-full flex flex-col gap-1 font-mono">
-        <div class="screen-panel h-[48px] px-3 py-1.5 flex justify-between items-center">
-          <div class="flex items-center gap-3">
-            <div class="w-16 h-9 console-field flex flex-col items-center justify-center">
-              <span class="text-[8px] text-gray-500">INPUT</span>
-              <span class="text-base font-black text-vb-cyan leading-none">CH ${String(ch.id).padStart(2, '0')}</span>
+      <div class="h-full flex flex-col gap-1 font-mono text-gray-200">
+        <!-- Header canale in stile QL5: chip colore + numero/nome + valori chiave -->
+        <div class="screen-panel h-[44px] px-2 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-1.5 h-8 rounded-sm" style="background:${abColor}"></div>
+            <div class="console-field px-2 py-0.5 flex flex-col items-center leading-none">
+              <span class="text-[7px] text-gray-500">CH</span>
+              <span class="text-[15px] font-black text-vb-cyan">${String(ch.id).padStart(2, '0')}</span>
             </div>
             <div>
-              <div class="text-[16px] font-black text-white leading-tight uppercase">${ch.name}</div>
-              <div class="text-[8px] text-gray-500 tracking-[0.24em] uppercase">Selected Channel Processing</div>
+              <div class="text-[14px] font-black text-white leading-tight uppercase">${ch.name}</div>
+              <div class="text-[7px] text-gray-500 tracking-[0.22em] uppercase">Selected Channel</div>
             </div>
           </div>
-          <div class="grid grid-cols-4 gap-2 text-center">
-            <div class="console-field focus-target px-3 py-0.5 ${focusClass('channel', 'gain')}" data-focus-area="channel" data-focus-param="gain" data-focus-channel="${ch.id}"><div class="text-[7px] text-gray-500">GAIN</div><div class="text-vb-cyan text-[11px] font-black">${ch.gain} dB</div></div>
-            <div class="console-field focus-target px-3 py-0.5 ${focusClass('channel', 'hpfFrequency')}" data-focus-area="channel" data-focus-param="hpfFrequency" data-focus-channel="${ch.id}"><div class="text-[7px] text-gray-500">HPF</div><div class="text-vb-cyan text-[11px] font-black">${ch.hpfEnabled ? ch.hpfFrequency + ' Hz' : 'OFF'}</div></div>
-            <div class="console-field focus-target px-3 py-0.5 ${focusClass('channel', 'pan')}" data-focus-area="channel" data-focus-param="pan" data-focus-channel="${ch.id}"><div class="text-[7px] text-gray-500">PAN</div><div class="text-gray-200 text-[11px] font-black">${ch.pan}</div></div>
-            <div class="console-field px-3 py-0.5"><div class="text-[7px] text-gray-500">FADER</div><div class="text-gray-200 text-[11px] font-black">${ch.faderDb} dB</div></div>
+          <div class="flex gap-1">
+            <div class="console-field focus-target px-2 py-0.5 text-center ${focusClass('channel', 'gain')}" data-focus-area="channel" data-focus-param="gain" data-focus-channel="${ch.id}"><div class="text-[6px] text-gray-500">HA GAIN</div><div class="text-vb-cyan text-[11px] font-black leading-none">${ch.gain > 0 ? '+' : ''}${ch.gain}</div></div>
+            <div class="console-field focus-target px-2 py-0.5 text-center ${focusClass('channel', 'hpfFrequency')}" data-focus-area="channel" data-focus-param="hpfFrequency" data-focus-channel="${ch.id}"><div class="text-[6px] text-gray-500">HPF</div><div class="text-[11px] font-black leading-none ${ch.hpfEnabled ? 'text-vb-cyan' : 'text-gray-600'}">${ch.hpfEnabled ? ch.hpfFrequency : 'OFF'}</div></div>
+            <div class="console-field focus-target px-2 py-0.5 text-center ${focusClass('channel', 'pan')}" data-focus-area="channel" data-focus-param="pan" data-focus-channel="${ch.id}"><div class="text-[6px] text-gray-500">PAN</div><div class="text-gray-200 text-[11px] font-black leading-none">${ch.pan === 0 ? 'C' : (ch.pan < 0 ? 'L' + Math.abs(ch.pan) : 'R' + ch.pan)}</div></div>
+            <div class="console-field px-2 py-0.5 text-center"><div class="text-[6px] text-gray-500">FADER</div><div class="text-gray-200 text-[11px] font-black leading-none">${ch.faderDb}</div></div>
           </div>
         </div>
-        <div class="flex-grow grid grid-cols-[1.65fr_1fr] gap-2 min-h-0">
-          <div class="screen-panel p-2 flex flex-col min-h-0">
-            <div class="flex justify-between items-center mb-1">
-              <span class="text-[8px] font-black text-gray-400 tracking-[0.18em]">4 BAND PARAMETRIC EQ</span>
-              <span class="text-[7px] text-gray-600">20Hz  100  1k  10k  20k</span>
-            </div>
-            <div class="console-field flex-grow min-h-[70px] relative overflow-hidden">
-              <div class="absolute inset-0 opacity-35" style="background-image: linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.12) 1px, transparent 1px); background-size: 22px 18px;"></div>
-              <svg id="eqCurveSvg" class="relative z-10 w-full h-full" viewBox="0 0 300 150" preserveAspectRatio="none">
-                <path d="M0 75 H300" stroke="rgba(148,163,184,0.28)" stroke-width="1"></path>
-                <path class="eq-curve-path" d="${eqPath(ch)}" fill="none" stroke="#22d3ee" stroke-width="2.2"></path>
-                ${Object.values(ch.eq).map((band, index) => `<circle class="eq-curve-node" cx="${35 + index * 75}" cy="${clamp(75 - band.gain * 4, 18, 132)}" r="4" fill="#22d3ee" stroke="#061018" stroke-width="2"></circle>`).join('')}
-              </svg>
-            </div>
-            <div class="grid grid-cols-4 gap-1 mt-1 text-[7px]">
-              ${Object.entries(ch.eq).map(([band, value]) => `
-                <div class="console-field p-1 grid grid-cols-3 gap-[2px]">
-                  <div class="text-vb-cyan font-black uppercase tracking-wide col-span-3 leading-none">${band}</div>
-                  <label class="block text-gray-500 text-[5px] leading-none">FREQ <input data-eq-field="${band}.frequency" data-focus-area="eq" data-focus-band="${band}" data-focus-param="frequency" data-focus-channel="${ch.id}" class="focus-target ${focusClass('eq', 'frequency', band)} w-full h-4 bg-[#010305] border border-white/10 px-0.5 text-[8px] leading-none text-gray-200" type="number" value="${value.frequency}"></label>
-                  <label class="block text-gray-500 text-[5px] leading-none">GAIN <input data-eq-field="${band}.gain" data-focus-area="eq" data-focus-band="${band}" data-focus-param="gain" data-focus-channel="${ch.id}" class="focus-target ${focusClass('eq', 'gain', band)} w-full h-4 bg-[#010305] border border-white/10 px-0.5 text-[8px] leading-none text-gray-200" type="number" step="0.5" value="${value.gain}"></label>
-                  <label class="block text-gray-500 text-[5px] leading-none">Q <input data-eq-field="${band}.q" data-focus-area="eq" data-focus-band="${band}" data-focus-param="q" data-focus-channel="${ch.id}" class="focus-target ${focusClass('eq', 'q', band)} w-full h-4 bg-[#010305] border border-white/10 px-0.5 text-[8px] leading-none text-gray-200" type="number" step="0.1" value="${value.q}"></label>
+
+        <div class="flex-grow grid grid-cols-[1.55fr_1fr] gap-1 min-h-0">
+          <!-- COLONNA SINISTRA: HA / HPF + EQUALIZER -->
+          <div class="flex flex-col gap-1 min-h-0">
+            <!-- Modulo HA / HPF -->
+            <div class="screen-panel flex flex-col">
+              <div class="flex items-center justify-between px-2 h-4 bg-white/5 border-b border-white/10"><span class="text-[7px] font-black tracking-[0.2em] text-gray-300">HA / HPF</span><div class="flex gap-1"><span class="text-[6px] px-1 rounded-sm ${ch.phantom ? 'bg-led-red/30 text-led-red' : 'bg-black/40 text-gray-600'}">+48V</span><span class="text-[6px] px-1 rounded-sm bg-black/40 text-gray-600">Ø</span></div></div>
+              <div class="p-1.5 grid grid-cols-[1fr_auto] gap-2 items-center">
+                <label class="focus-target ${focusClass('channel', 'gain')}" data-focus-area="channel" data-focus-param="gain" data-focus-channel="${ch.id}">
+                  <div class="flex justify-between items-baseline"><span class="text-[7px] text-gray-500">ANALOG GAIN</span><span class="text-vb-cyan text-[13px] font-black leading-none">${ch.gain > 0 ? '+' : ''}${ch.gain} dB</span></div>
+                  <input data-channel-field="gain" class="w-full accent-vb-cyan mt-0.5" type="range" min="-18" max="60" value="${ch.gain}">
+                  <input data-channel-field="gain" class="w-full h-4 mt-0.5 bg-[#010305] border border-white/10 px-1 text-vb-cyan text-[9px] font-black text-center" type="number" value="${ch.gain}">
+                </label>
+                <div class="flex flex-col items-center gap-0.5">
+                  <button data-action="toggle-hpf" class="w-[52px] h-8 rounded-sm border-2 text-[9px] font-black leading-tight ${ch.hpfEnabled ? 'text-vb-cyan border-vb-cyan bg-vb-cyan/15 shadow-[0_0_8px_rgba(34,211,238,0.35)]' : 'text-gray-500 border-white/15 bg-black/30'}">HPF<br>${ch.hpfEnabled ? 'ON' : 'OFF'}</button>
+                  <label class="focus-target ${focusClass('channel', 'hpfFrequency')}" data-focus-area="channel" data-focus-param="hpfFrequency" data-focus-channel="${ch.id}">
+                    <input data-channel-field="hpfFrequency" class="w-[52px] h-4 bg-[#010305] border border-white/10 text-[9px] font-black text-center ${ch.hpfEnabled ? 'text-vb-cyan' : 'text-gray-500'}" type="number" value="${ch.hpfFrequency}">
+                    <div class="text-[6px] text-gray-500 text-center leading-none">Hz</div>
+                  </label>
                 </div>
-              `).join('')}
+              </div>
+            </div>
+
+            <!-- Modulo EQUALIZER -->
+            <div class="screen-panel flex flex-col flex-grow min-h-0">
+              <div class="flex items-center justify-between px-2 h-4 bg-white/5 border-b border-white/10"><span class="text-[7px] font-black tracking-[0.2em] text-gray-300">EQUALIZER · 4 BAND PEQ</span><span class="text-[6px] text-gray-500">20 · 100 · 1k · 10k · 20k</span></div>
+              <div class="console-field flex-grow min-h-[56px] relative overflow-hidden m-1">
+                <div class="absolute inset-0 opacity-30" style="background-image: linear-gradient(rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.12) 1px, transparent 1px); background-size: 22px 16px;"></div>
+                <svg id="eqCurveSvg" class="relative z-10 w-full h-full" viewBox="0 0 300 150" preserveAspectRatio="none">
+                  <path d="M0 75 H300" stroke="rgba(148,163,184,0.28)" stroke-width="1"></path>
+                  <path class="eq-curve-path" d="${eqPath(ch)}" fill="none" stroke="#22d3ee" stroke-width="2.2"></path>
+                  ${bandKeys.map((band, index) => `<circle class="eq-curve-node" cx="${35 + index * 75}" cy="${clamp(75 - ch.eq[band].gain * 4, 18, 132)}" r="${band === activeBand ? 6 : 4}" fill="${EQ_BANDS[band].color}" stroke="#061018" stroke-width="2"></circle>`).join('')}
+                </svg>
+              </div>
+              <!-- Selettore banda EQ (tab colorati come la console reale) -->
+              <div class="grid grid-cols-4 gap-1 px-1">
+                ${bandKeys.map(band => `<button data-action="eq-band-select" data-eq-band="${band}" class="h-5 rounded-sm text-[8px] font-black border ${band === activeBand ? 'text-black' : 'text-gray-400 bg-black/30 border-white/10'}" style="${band === activeBand ? `background:${EQ_BANDS[band].color};border-color:${EQ_BANDS[band].color}` : ''}">${EQ_BANDS[band].label}</button>`).join('')}
+              </div>
+              <!-- Parametri della banda selezionata, grandi e leggibili -->
+              <div class="grid grid-cols-3 gap-1 p-1">
+                <label class="console-field focus-target p-1 text-center ${focusClass('eq', 'frequency', activeBand)}" data-focus-area="eq" data-focus-band="${activeBand}" data-focus-param="frequency" data-focus-channel="${ch.id}"><div class="text-[6px] text-gray-500">FREQ</div><input data-eq-field="${activeBand}.frequency" class="w-full h-5 bg-[#010305] border border-white/10 text-[11px] font-black text-center text-gray-100" type="number" value="${ab.frequency}"><div class="text-[6px] text-gray-600">Hz</div></label>
+                <label class="console-field focus-target p-1 text-center ${focusClass('eq', 'gain', activeBand)}" data-focus-area="eq" data-focus-band="${activeBand}" data-focus-param="gain" data-focus-channel="${ch.id}"><div class="text-[6px] text-gray-500">GAIN</div><input data-eq-field="${activeBand}.gain" class="w-full h-5 bg-[#010305] border border-white/10 text-[11px] font-black text-center" style="color:${abColor}" type="number" step="0.5" value="${ab.gain}"><div class="text-[6px] text-gray-600">dB</div></label>
+                <label class="console-field focus-target p-1 text-center ${focusClass('eq', 'q', activeBand)}" data-focus-area="eq" data-focus-band="${activeBand}" data-focus-param="q" data-focus-channel="${ch.id}"><div class="text-[6px] text-gray-500">Q</div><input data-eq-field="${activeBand}.q" class="w-full h-5 bg-[#010305] border border-white/10 text-[11px] font-black text-center text-gray-100" type="number" step="0.1" value="${ab.q}"><div class="text-[6px] text-gray-600">width</div></label>
+              </div>
             </div>
           </div>
-          <div class="grid grid-rows-[auto_1fr] gap-2 min-h-0">
-            <div class="screen-panel p-1 flex gap-1">
-              <button data-action="toggle-hpf" class="flex-1 py-1.5 text-[8px] font-black border ${ch.hpfEnabled ? 'text-vb-cyan border-vb-cyan/50 bg-vb-cyan/10' : 'text-gray-500 border-white/10 bg-black/30'}">HPF ${ch.hpfEnabled ? 'ON' : 'OFF'}</button>
-              <button data-action="toggle-gate" class="flex-1 py-1.5 text-[8px] font-black border ${dyn1.enabled ? 'text-led-green border-led-green/50 bg-led-green/10' : 'text-gray-500 border-white/10 bg-black/30'}">DYN 1</button>
-              <button data-action="toggle-compressor" class="flex-1 py-1.5 text-[8px] font-black border ${dyn2.enabled ? 'text-led-amber border-led-amber/50 bg-led-amber/10' : 'text-gray-500 border-white/10 bg-black/30'}">DYN 2</button>
+
+          <!-- COLONNA DESTRA: DYNAMICS 1 / DYNAMICS 2 / PAN -->
+          <div class="flex flex-col gap-1 min-h-0">
+            <!-- DYNAMICS 1 (Gate) -->
+            <div class="screen-panel flex flex-col">
+              <div class="flex items-center justify-between px-2 h-4 bg-white/5 border-b border-white/10">
+                <span class="text-[7px] font-black tracking-[0.15em] text-gray-300">DYNAMICS 1 · GATE</span>
+                <button data-action="toggle-gate" class="text-[7px] font-black px-1.5 rounded-sm border ${dyn1.enabled ? 'text-led-green border-led-green/60 bg-led-green/15' : 'text-gray-500 border-white/15'}">${dyn1.enabled ? 'ON' : 'OFF'}</button>
+              </div>
+              <div class="p-1.5 focus-target ${focusClass('channel', 'gateThreshold')}" data-focus-area="channel" data-focus-param="gateThreshold" data-focus-processor="dyn1" data-focus-channel="${ch.id}">
+                <div class="flex justify-between items-baseline"><span class="text-[7px] text-gray-500">THRESHOLD</span><span class="text-led-green text-[12px] font-black leading-none">${dyn1.threshold} dB</span></div>
+                <input data-channel-field="gateThreshold" class="w-full accent-led-green mt-0.5" type="range" min="-80" max="0" value="${dyn1.threshold}">
+                <div class="h-1 mt-0.5 bg-black rounded overflow-hidden border border-white/10"><div class="h-full bg-led-green" style="width:${gateLevel}%"></div></div>
+              </div>
             </div>
-            <div class="screen-panel p-1 grid grid-cols-2 gap-1 overflow-hidden">
-              <label class="console-field focus-target p-1 text-[8px] text-gray-500 ${focusClass('channel', 'gain')}" data-focus-area="channel" data-focus-param="gain" data-focus-channel="${ch.id}">GAIN
-                <input data-channel-field="gain" class="w-full accent-vb-cyan" type="range" min="-18" max="60" value="${ch.gain}">
-                <input data-channel-field="gain" class="w-full h-5 bg-[#010305] border border-white/10 px-1 py-0 text-vb-cyan font-black" type="number" value="${ch.gain}">
-              </label>
-              <label class="console-field focus-target p-1 text-[8px] text-gray-500 ${focusClass('channel', 'hpfFrequency')}" data-focus-area="channel" data-focus-param="hpfFrequency" data-focus-channel="${ch.id}">HPF FREQUENCY
-                <input data-channel-field="hpfFrequency" class="w-full accent-vb-cyan" type="range" min="20" max="200" value="${ch.hpfFrequency}">
-                <input data-channel-field="hpfFrequency" class="w-full h-5 bg-[#010305] border border-white/10 px-1 py-0 text-vb-cyan font-black" type="number" value="${ch.hpfFrequency}">
-              </label>
-              <div class="console-field focus-target p-1 ${focusClass('channel', 'gateThreshold')}" data-focus-area="channel" data-focus-param="gateThreshold" data-focus-processor="dyn1" data-focus-channel="${ch.id}"><div class="text-[8px] text-gray-500 mb-0.5">DYN 1 GATE ${dyn1.threshold}dB</div><input data-channel-field="gateThreshold" class="w-full accent-led-green" type="range" min="-80" max="0" value="${dyn1.threshold}"><div class="h-1.5 bg-black rounded overflow-hidden border border-white/10"><div class="h-full bg-led-green" style="width:${gateLevel}%"></div></div></div>
-              <div class="console-field focus-target p-1 ${focusClass('channel', 'compressorThreshold')}" data-focus-area="channel" data-focus-param="compressorThreshold" data-focus-processor="dyn2" data-focus-channel="${ch.id}"><div class="text-[8px] text-gray-500 mb-0.5">DYN 2 COMP ${dyn2.threshold}dB</div><input data-channel-field="compressorThreshold" class="w-full accent-led-amber" type="range" min="-60" max="0" value="${dyn2.threshold}"><div class="h-1.5 bg-black rounded overflow-hidden border border-white/10"><div class="h-full bg-led-amber" style="width:${compLevel}%"></div></div></div>
-              <label class="console-field focus-target p-1 text-[8px] text-gray-500 col-span-2 ${focusClass('channel', 'ratio')}" data-focus-area="channel" data-focus-param="ratio" data-focus-channel="${ch.id}">COMP RATIO
-                <input data-channel-field="ratio" class="w-full accent-led-amber" type="range" min="1" max="10" step="0.1" value="${dyn2.ratio}">
-                <input data-channel-field="ratio" class="w-full h-5 bg-[#010305] border border-white/10 px-1 py-0 text-led-amber font-black" type="number" step="0.1" value="${dyn2.ratio}">
-              </label>
+
+            <!-- DYNAMICS 2 (Comp) -->
+            <div class="screen-panel flex flex-col">
+              <div class="flex items-center justify-between px-2 h-4 bg-white/5 border-b border-white/10">
+                <span class="text-[7px] font-black tracking-[0.15em] text-gray-300">DYNAMICS 2 · COMP</span>
+                <button data-action="toggle-compressor" class="text-[7px] font-black px-1.5 rounded-sm border ${dyn2.enabled ? 'text-led-amber border-led-amber/60 bg-led-amber/15' : 'text-gray-500 border-white/15'}">${dyn2.enabled ? 'ON' : 'OFF'}</button>
+              </div>
+              <div class="p-1.5 grid grid-cols-2 gap-2">
+                <div class="focus-target ${focusClass('channel', 'compressorThreshold')}" data-focus-area="channel" data-focus-param="compressorThreshold" data-focus-processor="dyn2" data-focus-channel="${ch.id}">
+                  <div class="flex justify-between items-baseline"><span class="text-[7px] text-gray-500">THR</span><span class="text-led-amber text-[11px] font-black leading-none">${dyn2.threshold}</span></div>
+                  <input data-channel-field="compressorThreshold" class="w-full accent-led-amber mt-0.5" type="range" min="-60" max="0" value="${dyn2.threshold}">
+                </div>
+                <div class="focus-target ${focusClass('channel', 'ratio')}" data-focus-area="channel" data-focus-param="ratio" data-focus-channel="${ch.id}">
+                  <div class="flex justify-between items-baseline"><span class="text-[7px] text-gray-500">RATIO</span><span class="text-led-amber text-[11px] font-black leading-none">${dyn2.ratio}:1</span></div>
+                  <input data-channel-field="ratio" class="w-full accent-led-amber mt-0.5" type="range" min="1" max="10" step="0.1" value="${dyn2.ratio}">
+                </div>
+              </div>
+            </div>
+
+            <!-- PAN -->
+            <div class="screen-panel flex flex-col flex-grow min-h-0">
+              <div class="flex items-center px-2 h-4 bg-white/5 border-b border-white/10"><span class="text-[7px] font-black tracking-[0.2em] text-gray-300">PAN / TO STEREO</span></div>
+              <div class="p-1.5 flex-grow flex flex-col justify-center focus-target ${focusClass('channel', 'pan')}" data-focus-area="channel" data-focus-param="pan" data-focus-channel="${ch.id}">
+                <div class="flex justify-between items-baseline"><span class="text-[7px] text-gray-500">PAN</span><span class="text-vb-cyan text-[13px] font-black leading-none">${ch.pan === 0 ? 'CENTER' : (ch.pan < 0 ? 'L ' + Math.abs(ch.pan) : 'R ' + ch.pan)}</span></div>
+                <input data-channel-field="pan" class="w-full accent-vb-cyan mt-1" type="range" min="-100" max="100" value="${ch.pan}">
+                <div class="flex justify-between text-[6px] text-gray-600 mt-0.5"><span>L</span><span>C</span><span>R</span></div>
+              </div>
             </div>
           </div>
         </div>
@@ -2119,7 +2175,10 @@ Do not modify visual layout without approval
       band
     });
     recordAction('eqBandSelect', { channelId: assessmentState.selectedChannel, band });
-    updateEqBandButtons();
+    // Rigenera il touchscreen così i parametri della banda selezionata compaiono
+    // (la SELECTED CHANNEL VIEW mostra una banda per volta, come sul QL5 reale).
+    if (assessmentState.activeTab === 'SELECTED_CH') refreshScreen();
+    else updateEqBandButtons();
   }
 
   function bindScreenControls() {
@@ -2532,14 +2591,25 @@ Do not modify visual layout without approval
       const target = getMagnifierTarget(event.target);
       if (target) showMagnifier(target, event.clientX, event.clientY);
     });
+    // Il mousemove è il driver principale: ad ogni movimento riacquisisce
+    // l'elemento sotto il cursore. Così la lente resta affidabile anche dopo
+    // che un click rigenera il touchscreen (l'elemento vecchio viene sostituito
+    // e il target di prima resta "staccato" dal DOM: senza questo, la lente
+    // restava congelata finché non si passava su un elemento diverso).
     document.addEventListener('mousemove', event => {
-      if (!magnifierState.enabled || !magnifierState.target) return;
+      if (!magnifierState.enabled) return;
       const target = getMagnifierTarget(event.target);
-      if (target === magnifierState.target) positionMagnifier(event.clientX, event.clientY);
+      if (!target) {
+        if (magnifierState.target) hideMagnifier();
+        return;
+      }
+      if (target !== magnifierState.target) showMagnifier(target, event.clientX, event.clientY);
+      else positionMagnifier(event.clientX, event.clientY);
     });
     document.addEventListener('mouseout', event => {
-      if (!magnifierState.target) return;
-      if (!event.relatedTarget || !magnifierState.target.contains(event.relatedTarget)) hideMagnifier();
+      // Nasconde solo quando il puntatore lascia davvero la finestra;
+      // gli spostamenti tra elementi li gestisce il mousemove qui sopra.
+      if (!event.relatedTarget) hideMagnifier();
     });
     document.addEventListener('focusin', event => {
       const target = getMagnifierTarget(event.target);
